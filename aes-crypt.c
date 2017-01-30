@@ -1,16 +1,7 @@
 #include <gcrypt.h>
 #include <gpg-error.h>
 
-#define GCRY_CIPHER GCRY_CIPHER_AES256   // Pick the cipher here
-//#define GCRY_CIPHER GCRY_CIPHER_AES128   // Pick the cipher here
-/*
-   Called from my main function:
 
-   aesTest(GCRY_CIPHER_MODE_ECB, "a test ini value");
-   aesTest(GCRY_CIPHER_MODE_ECB, "different value!");
-   aesTest(GCRY_CIPHER_MODE_CBC, "a test ini value");
-   aesTest(GCRY_CIPHER_MODE_CBC, "different value!");
-   */
 static void
 die(gcry_error_t err, char *desc) {
         fprintf(stderr, "Error: %s\n", desc);
@@ -23,7 +14,7 @@ die(gcry_error_t err, char *desc) {
 }
 
 static void
-aes_crypt(int gcry_mode, char * iniVector, char* buf) {
+init_gcrypt(void) {
         gcry_error_t     gErr;
         // init gcrypt
         if (!gcry_check_version(GCRYPT_VERSION)) {
@@ -39,75 +30,106 @@ aes_crypt(int gcry_mode, char * iniVector, char* buf) {
         gErr = gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
         if (gErr) die(gErr, "Init finished");
         // init done
+        return;
+}
+
+static void
+cleanDeath(gcry_error_t err, char *desc, gcry_cipher_hd_t h,
+                unsigned char *key, unsigned char *iv, unsigned char *buf) {
+        if (h) gcry_cipher_close(h);
+        if (key) gcry_free(key);
+        if (iv) gcry_free(iv);
+        if (buf) gcry_free(buf);
+        die(err, desc);
+}
+
+static void
+encrypt(char *is, char * os, char* pw) {
+        init_gcrypt();
+        gcry_error_t     gErr;
 
         gcry_cipher_hd_t hd;
         size_t index;
-        size_t keyLength = gcry_cipher_get_algo_keylen(GCRY_CIPHER);
-        if (!keyLength) die(0, "keylen");
-        size_t blkLength = gcry_cipher_get_algo_blklen(GCRY_CIPHER);
-        if (!blkLength) die(0, "blklen");
-        char * txtBuffer = "123456789 abcdefghijklmnopqrstuvwzyz ABCDEFGHIJKLMNOPQRSTUVWZYZ";
-        size_t txtLength = strlen(txtBuffer)+1; // string plus termination
-        char * encBuffer = gcry_xmalloc_secure(txtLength); //free this
-        if (encBuffer == NULL) exit(1);
-        char * outBuffer = malloc(txtLength);
+        size_t keyLen = gcry_cipher_get_algo_keylen(GCRY_CIPHER_AES256);
+        if (!keyLen) die(0, "keylen");
+        size_t blkLen = gcry_cipher_get_algo_blklen(GCRY_CIPHER_AES256);
+        if (!blkLen) die(0, "blklen");
+        char * txtBuf = "123456789 abcdefghijklmnopqrstuvwzyz ABCDEFGHIJKLMNOPQRSTUVWZYZaå@ä~#~µ&*Œ@oe";
+        size_t txtLen = strlen(txtBuf)+1; // string plus termination
+        //char * outBuf = malloc(txtLen);
         char * aesSymKey = "one test AES key"; // 16 bytes
+        unsigned char *key = gcry_xmalloc_secure(keyLen);
+        if (!key) cleanDeath(0, "key xmalloc", 0, NULL, NULL, NULL);
+        unsigned char *iv = gcry_xmalloc_secure(blkLen);
+        if (!iv) cleanDeath(0, "iv xmalloc", 0, key, NULL, NULL);
+        unsigned char * buf = gcry_xmalloc_secure(txtLen); //free this
+        if (!buf) cleanDeath(0, "buf xmalloc", 0, key, iv, NULL);
 
         gErr = gcry_cipher_open(
                         &hd, // gcry_cipher_hd_t *
-                        GCRY_CIPHER,   // int
-                        gcry_mode,     // int
-                        GCRY_CIPHER_SECURE);            // unsigned int
-        if (gErr) die(gErr, "gcry_cipher_open");
+                        GCRY_CIPHER_AES256,   // int
+                        GCRY_CIPHER_MODE_CBC,     // int
+                        GCRY_CIPHER_CBC_CTS | GCRY_CIPHER_SECURE);            // unsigned int
+        if (gErr) cleanDeath(gErr, "gcry_cipher_open", 0, key, iv, buf);
 
-        gErr = gcry_cipher_setkey(hd, aesSymKey, keyLength);
-        if (gErr) die(gErr, "gcry_cipher_setkey");
+        gErr = gcry_cipher_setkey(hd, aesSymKey, keyLen);
+        if (gErr) cleanDeath(gErr, "cipher setkey", hd, key, iv, buf);
 
-        gErr = gcry_cipher_setiv(hd, iniVector, blkLength);
-        if (gErr) die(gErr, "gcry_cipher_setiv");
+        gErr = gcry_cipher_setiv(hd, iv, blkLen);
+        if (gErr) cleanDeath(gErr, "cipher setiv", hd, key, iv, buf);
 
         gErr = gcry_cipher_encrypt(
                         hd, // gcry_cipher_hd_t
-                        encBuffer,    // void *
-                        txtLength,    // size_t
-                        txtBuffer,    // const void *
-                        txtLength);   // size_t
-        if (gErr) die(gErr, "gcry_cipher_encrypt");
+                        buf,    // void *
+                        txtLen,    // size_t
+                        NULL,    // const void *
+                        0);   // size_t
+        if (gErr) cleanDeath(gErr, "cipher enc", hd, key, iv, buf);
+        
+        printf("encBuffer = ");
+        for (index = 0; index < txtLen; index++)
+                printf("%02X", buf[index]);
+        printf("\n");
 
-        gErr = gcry_cipher_setiv(hd, iniVector, blkLength);
-        if (gErr) die(gErr, "gcry_cipher_setiv");
+        gErr = gcry_cipher_setiv(hd, iv, blkLen);
+        if (gErr) cleanDeath(gErr, "cipher setiv", hd, key, iv, buf);
 
         gErr = gcry_cipher_decrypt(
                         hd, // gcry_cipher_hd_t
-                        outBuffer,    // void *
-                        txtLength,    // size_t
-                        encBuffer,    // const void *
-                        txtLength);   // size_t
-        if (gErr) die(gErr, "gcry_cipher_decrypt");
+                        buf,    // void *
+                        txtLen,    // size_t
+                        NULL,    // const void *
+                        0);   // size_t
+        if (gErr) cleanDeath(gErr, "cipher dec", hd, key, iv, buf);
 
-        printf("gcry_mode = %s\n", gcry_mode == GCRY_CIPHER_MODE_ECB ? "ECB" : "CBC");
-        printf("keyLength = %d\n", (int)keyLength);
-        printf("blkLength = %d\n", (int)blkLength);
-        printf("txtLength = %d\n", (int)txtLength);
+        printf("gcry_mode = %s\n", "CBC");
+        printf("keyLength = %d\n", (int)keyLen);
+        printf("blkLength = %d\n", (int)blkLen);
+        printf("txtLength = %d\n", (int)txtLen);
         printf("aesSymKey = %s\n", aesSymKey);
-        printf("iniVector = %s\n", iniVector);
-        printf("txtBuffer = %s\n", txtBuffer);
-
+        printf("iniVector = %s\n", iv);
+        printf("txtBuffer = %s\n", txtBuf);
+/*
         printf("encBuffer = ");
         for (index = 0; index < txtLength; index++)
                 printf("%02X", (unsigned char)encBuffer[index]);
         printf("\n");
-
-        printf("outBuffer = %s\n", outBuffer);
+*/
+        printf("outBuffer = %s\n", buf);
 
         // clean up after ourselves
         gcry_cipher_close(hd);
-        gcry_free(encBuffer);
-        free(outBuffer);
+        gcry_free(buf);
+        //free(outBuffer);
 }
 
 int
 main(int argc, char** argv) {
+        if (argc != 4) die(0, "bastard");
 
-        aes_crypt(GCRY_CIPHER_MODE_CBC, "a test ini value", "Encrypt this shit for me please!");
+        char *infile;
+        char *outfile;
+        char *password;
+
+        encrypt(infile, outfile, password);
 }
