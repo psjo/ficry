@@ -1,5 +1,6 @@
+fcry
 *.o
 *~
 *.swp
 aes
-
+dummy*
