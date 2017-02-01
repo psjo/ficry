@@ -102,11 +102,12 @@ read_file(char *is, unsigned char **buf) {
         fseek(f, 0, SEEK_END);
         sz = ftell(f);
         fseek(f, 0, SEEK_SET);
+        /*
         if (sz >= SECMEM_SIZE) { // - key, iv, mac... 
                 fclose(f);
                 die(0, "File too large");
         }
-
+        */
         //if (sec)
         *buf = malloc(sz + 1); //free this
         if (!*buf) clean_death(0, "buf xmalloc", 0, NULL, NULL, NULL, NULL, NULL, NULL);
@@ -150,7 +151,7 @@ init_cipher(gcry_cipher_hd_t *hd, unsigned char *key, unsigned char *iv) {
                         hd, // gcry_cipher_hd_t *
                         CIPHER,   // int
                         GCRY_CIPHER_MODE_CBC,     // int
-                        GCRY_CIPHER_CBC_CTS | GCRY_CIPHER_SECURE);            // unsigned int
+                        GCRY_CIPHER_CBC_CTS); // | GCRY_CIPHER_SECURE);            // unsigned int
         if (err) return err; //clean_death(err, "gcry_cipher_open", 0, key, iv, buf);
 
         err = gcry_cipher_setkey(*hd, key, key_len);
@@ -176,7 +177,10 @@ encrypt(char *is, char * os, char* pw) {
         get_algo_len();
         len = read_file(is, &buf);
         blocks = len / blk_len;
-        if (len % blk_len) blocks++;
+        /*
+         * what what!!!! (len % blk_len)
+         */
+        if ((sizeof(size_t) + len) % blk_len) blocks++;
 
         salt = gcry_xmalloc_secure(KDF_SALT_SIZE);
         if (!salt) clean_death(0, "salt xmalloc", 0, key, iv, buf, hmac_key, salt, keys);
@@ -208,7 +212,11 @@ encrypt(char *is, char * os, char* pw) {
 
         cbuf = calloc(blocks, blk_len);
         if (!cbuf) clean_death(0, "cbuf malloc", hd, key, iv, buf, hmac_key, salt, keys); 
-        memcpy(cbuf, buf, len);
+        /*
+         * what what!!!!
+         */
+        memcpy(cbuf, &len, sizeof(size_t));
+        memcpy(cbuf + sizeof(size_t), buf, len);
         free(buf);
         buf = NULL;
 
@@ -258,7 +266,7 @@ decrypt(char *is, char *os, char *pw) {
         gcry_mac_hd_t mac = 0;
         unsigned char *key = NULL, *iv = NULL, *buf = NULL, *hmac = NULL, *salt = NULL;
         unsigned char *keys = NULL, *cbuf = NULL, *hmac_key;
-        size_t tot_len, len;
+        size_t tot_len, len, flen;
 
         fprintf(stderr, "decryption wanted on: %s\n", is);
 
@@ -314,13 +322,22 @@ decrypt(char *is, char *os, char *pw) {
 
         err = gcry_cipher_decrypt( hd, cbuf, len, NULL, 0);
         if (err) clean_death(err, "cipher dec", hd, key, iv, buf, hmac, NULL, NULL);
-
+        free(buf);
+        memcpy(&flen, cbuf, sizeof(size_t));
+        fprintf(stderr, "file size: %d\n", (int)flen);
+        buf = malloc(flen);
+        memcpy(buf, cbuf + sizeof(size_t), flen);
         //printf("plaintext = %s\n", cbuf);
-        write_file(os, cbuf, len);
+        write_file(os, buf, flen);
         // clean up after ourselves
         gcry_cipher_close(hd);
+        gcry_free(key);
+        gcry_free(hmac_key);
+        gcry_free(salt);
+        gcry_free(iv);
         free(buf);
         free(cbuf);
+        free(hmac);
 
         return 0;
 }
