@@ -172,16 +172,15 @@ encrypt(char *is, char * os, char* pw) {
         unsigned char *cbuf;
         size_t len, blocks, tot_len;
 
-        fprintf(stderr, "encryption wanted on: %s\n", is);
+        fprintf(stderr, "encryption wanted on: %s\nPassword: \"%s\"\n", is, pw);
 
         get_algo_len();
         len = read_file(is, &buf);
         blocks = len / blk_len;
-        /*
-         * what what!!!! (len % blk_len)
-         */
+
         if ((sizeof(size_t) + len) % blk_len) blocks++;
 
+        fprintf(stderr, "Creating salt\n");
         salt = gcry_xmalloc_secure(KDF_SALT_SIZE);
         if (!salt) clean_death(0, "salt xmalloc", 0, key, iv, buf, hmac_key, salt, keys);
         gcry_create_nonce(salt, KDF_SALT_SIZE);
@@ -212,9 +211,7 @@ encrypt(char *is, char * os, char* pw) {
 
         cbuf = calloc(blocks, blk_len);
         if (!cbuf) clean_death(0, "cbuf malloc", hd, key, iv, buf, hmac_key, salt, keys); 
-        /*
-         * what what!!!!
-         */
+
         memcpy(cbuf, &len, sizeof(size_t));
         memcpy(cbuf + sizeof(size_t), buf, len);
         free(buf);
@@ -240,6 +237,7 @@ encrypt(char *is, char * os, char* pw) {
         cbuf = malloc(hmac_len);
         if (!cbuf) clean_death(err, "hmac xmalloc", 0, key, iv, buf, hmac_key, salt, keys); 
 
+        fprintf(stderr, "Calculating HMAC\n");
         err = gcry_mac_open(&mac, HMAC, GCRY_MAC_FLAG_SECURE, NULL);
         if (err) clean_death(err, "hmac open", 0, key, iv, buf, hmac_key, salt, keys); 
         err = gcry_mac_setkey(mac, hmac_key, hmac_key_len);
@@ -268,7 +266,7 @@ decrypt(char *is, char *os, char *pw) {
         unsigned char *keys = NULL, *cbuf = NULL, *hmac_key;
         size_t tot_len, len, flen;
 
-        fprintf(stderr, "decryption wanted on: %s\n", is);
+        fprintf(stderr, "decryption wanted on: %s\nPassword: \"%s\"\n", is, pw);
 
         tot_len = read_file(is, &buf);
 
@@ -305,6 +303,7 @@ decrypt(char *is, char *os, char *pw) {
         gcry_free(keys);
         keys = NULL;
 
+        fprintf(stderr, "Verifying HMAC\n");
         err = gcry_mac_open(&mac, HMAC, GCRY_MAC_FLAG_SECURE, NULL);
         if (err) clean_death(err, "hmac open", 0, key, iv, buf, hmac_key, salt, keys); 
         err = gcry_mac_setkey(mac, hmac_key, hmac_key_len);
@@ -349,6 +348,7 @@ main(int argc, char** argv) {
         char *infile = NULL;
         char *outfile = NULL;
         char *pass = NULL;
+        char *pw = NULL;
 
         while ( EOF != (opt = getopt(argc, argv, "edi:o:p:h"))) {
                 switch(opt) {
@@ -375,8 +375,16 @@ main(int argc, char** argv) {
         }
         if (enc < 0)
                 help();
-        if (!pass) // || !pubkey)
-                die(0, "No password? Really?\n");
+        if (!pass) {// || !pubkey)
+                pw = calloc(1, 512);
+                if (!pw) die(0, "Password alloc failed");
+                fprintf(stderr, "Enter password/phrase (max 511 chars): ");
+                fgets(pw, 511, stdin);
+
+                if (!strlen(pw)) die(0, "No password? Really?\n");
+                if (pw[strlen(pw) - 1] == '\n') pw[strlen(pw) - 1] = '\0';
+                pass = pw;
+        }
         if (!infile)
                 help();
         else if (access(infile, 0)) {
@@ -389,12 +397,15 @@ main(int argc, char** argv) {
                 if (c == 'y' || c == 'Y')
                         die(0, "todo, when it all works"); //outfile = infile;
                 else
-                        noopt(); //help();
+                        outfile = "crapfile.out"; //noopt();
+                while ((getchar()) != '\n');
         } else if (!access(outfile, 0)) {
+                // this is temporary, non working crap
                 fprintf(stderr, "Output file: %s exists\nWrite over? [y/N]: ", outfile);
                 char c = getchar();
                 if (c != 'y' || c != 'Y')
                         die(0,  "Output file exists");
+                while ((getchar()) != '\n');
         }
         for (int i = optind; i < argc; i++)
                 fprintf(stderr, "No option arg: %s\n", argv[i]);
@@ -404,10 +415,7 @@ main(int argc, char** argv) {
                 encrypt(infile, outfile, pass);
         else
                 decrypt(infile, outfile, pass);
-        //init_gcrypt();
-        //decrypt(infile, outfile, pass);
-        //free(infile);
-        //if (outfile) free(outfile);
-        //free(pass);
+        fprintf(stderr, "%s is done\n", argv[0]);
+        if (pw) free(pw);
 }
 

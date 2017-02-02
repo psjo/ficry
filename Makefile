@@ -1,14 +1,14 @@
 CC = gcc
 LIBS = `libgcrypt-config --libs` #-lgcrypt
-CFLAGS = -g -std=c99 -pedantic -Wall #'libgcrypt-config --cflags'
+CFLAGS = -std=c99 -pedantic -Wall #'libgcrypt-config --cflags'
 LDFLAGS = -s ${LIBS}
 SRC = aes-crypt.c
 OBJ = ${SRC:.c=.o}
 
-all: options fcry
+all: options ficry
 
 options:
-	@echo aes build:
+	@echo ficry build:
 	@echo "CC	= ${CC}"
 	@echo "CFLAGS	= ${CFLAGS}"
 	@echo "LIBS	= ${LIBS}"
@@ -18,12 +18,12 @@ options:
 	@echo "CC $<"
 	@${CC} -c ${CFLAGS} $<
 
-fcry: ${OBJ}
+ficry: ${OBJ}
 	@echo "CC -o $@"
 	@${CC} -o $@ ${OBJ} ${LDFLAGS}
 
 clean:
 	@echo Cleaning
-	@rm -f fcry ${OBJ}
+	@rm -f ficry ${OBJ}
 
 .PHONY: all options clean

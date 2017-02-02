@@ -1,0 +1,2 @@
+# ficry
+start reading main
