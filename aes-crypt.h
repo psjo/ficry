@@ -4,6 +4,7 @@
 #include <gcrypt.h>
 #include <gpg-error.h>
 #include <getopt.h>
+#include <termios.h>
 
 #define CIPHER         GCRY_CIPHER_AES256
 #define HMAC           GCRY_MAC_HMAC_SHA512
@@ -40,3 +41,4 @@ static void init_gcrypt(void);
 static gcry_error_t init_cipher(gcry_cipher_hd_t *hd, unsigned char *key, unsigned char *iv);
 static int encrypt(char *is, char * os, char* pw);
 static int decrypt(char *is, char *os, char *pw);
+static void getpw(char *pw);

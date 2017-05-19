@@ -170,7 +170,8 @@ encrypt(char *is, char * os, char* pw)
         unsigned char *cbuf;
         size_t len, blocks, tot_len;
 
-        fprintf(stderr, "encryption wanted on: %s\nPassword: \"%s\"\n", is, pw);
+        fprintf(stderr, "encryption wanted on: %s\n", is);
+        //fprintf(stderr, "Password: \"%s\"\n", pw);
 
         get_algo_len();
         len = read_file(is, &buf);
@@ -281,7 +282,8 @@ decrypt(char *is, char *os, char *pw)
         unsigned char    *keys = NULL, *cbuf = NULL, *hmac_key;
         size_t tot_len, len, flen;
 
-        fprintf(stderr, "decryption wanted on: %s\nPassword: \"%s\"\n", is, pw);
+        fprintf(stderr, "decryption wanted on: %s\n", is);
+        //fprintf(stderr, "Password: \"%s\"\n", pw);
 
         tot_len = read_file(is, &buf);
 
@@ -376,6 +378,18 @@ decrypt(char *is, char *os, char *pw)
         return 0;
 }
 
+void
+getpw(char *pw)
+{
+        struct termios now, then;
+        tcgetattr(STDIN_FILENO, &now);
+        then = now;
+        then.c_lflag &= ~(ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &then);
+        fgets(pw, 511, stdin);
+        tcsetattr(STDIN_FILENO, TCSANOW, &now);
+}
+
 int
 main(int argc, char** argv)
 {
@@ -415,7 +429,7 @@ main(int argc, char** argv)
                 pw = calloc(1, 512);
                 if (!pw) die(0, "Password alloc failed");
                 fprintf(stderr, "Enter password/phrase (max 511 chars): ");
-                fgets(pw, 511, stdin);
+                getpw(pw); //fgets(pw, 511, stdin);
 
                 if (!strlen(pw)) die(0, "No password? Really?\n");
                 if (pw[strlen(pw) - 1] == '\n') pw[strlen(pw) - 1] = '\0';
