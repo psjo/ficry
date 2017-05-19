@@ -1,32 +1,18 @@
-#include <stdio.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <gcrypt.h>
-#include <gpg-error.h>
-
-#define CIPHER GCRY_CIPHER_AES256
-#define HMAC GCRY_MAC_HMAC_SHA512
-#define D_ALGO GCRY_KDF_PBKDF2
-#define D_SUBALGO GCRY_MD_SHA512
-#define KDF_ITER 50000
-#define KDF_SALT_SIZE 128
-#define ENCRYPTED 1
-#define PLAINTEXT 0
-#define SECMEM_SIZE 16384
-
-static size_t key_len = 0;
-static size_t blk_len = 0;
-static size_t hmac_len = 0;
-static size_t hmac_key_len = 0;
+/*
+ * insert stuff here...
+ */
+#include "aes-crypt.h"
 
 static void
-noopt(void) {
+noopt(void)
+{
         fprintf(stderr, "Not a valid argument!\n\n");
         return;
 }
 
 static void
-help(void) {
+help(void)
+{
         fprintf(stderr, "Usage:\n");
         fprintf(stderr, "      -e|-d: encrypt/decrypt, required\n");
         fprintf(stderr, "      -i <infile>: file, required\n");
@@ -37,7 +23,8 @@ help(void) {
 }
 
 static void
-die(gcry_error_t err, char *desc) {
+die(gcry_error_t err, char *desc)
+{
         fprintf(stderr, "Error: %s\n", desc);
         if (err) {
                 fprintf(stderr, "%s/%s\n",
@@ -48,15 +35,16 @@ die(gcry_error_t err, char *desc) {
 }
 
 static void
-clean_death(gcry_error_t err, char *desc,
+clean_death(gcry_error_t err, 
+                char *desc,
                 gcry_cipher_hd_t h,
                 unsigned char *key,
                 unsigned char *iv,
                 unsigned char *buf,
                 unsigned char *hmac_key,
                 unsigned char *salt,
-                unsigned char *keys) {
-
+                unsigned char *keys)
+{
         if (h) gcry_cipher_close(h);
         if (key) gcry_free(key);
         if (iv) gcry_free(iv);
@@ -69,21 +57,28 @@ clean_death(gcry_error_t err, char *desc,
 }
 
 static void
-get_algo_len(void) {
+get_algo_len(void)
+{
         key_len = gcry_cipher_get_algo_keylen(CIPHER);
         if (!key_len) die(0, "key len");
+
         blk_len = gcry_cipher_get_algo_blklen(CIPHER);
         if (!blk_len) die(0, "blk len");
+        
         hmac_key_len = gcry_mac_get_algo_keylen(HMAC);
         if (!hmac_key_len) die(0, "hmac len");
+        
         hmac_len = gcry_mac_get_algo_maclen(HMAC);
         if (!hmac_len) die(0, "hmac len");
 }
 
 static size_t
-write_file(char *os, unsigned char *buf, size_t len) {
+write_file(char *os, unsigned char *buf, size_t len)
+{
+
         FILE *f = fopen(os, "wb");
         if (!f) die(0, "fopen write");
+
         size_t rc;
 
         fprintf(stderr, "writing file: %s\n", os);
@@ -95,20 +90,16 @@ write_file(char *os, unsigned char *buf, size_t len) {
 
 
 static size_t
-read_file(char *is, unsigned char **buf) {
+read_file(char *is, unsigned char **buf)
+{
+
         FILE *f = fopen(is, "rb");
         if (!f) die(0, "fopen fail");
         size_t sz, rc;
         fseek(f, 0, SEEK_END);
         sz = ftell(f);
         fseek(f, 0, SEEK_SET);
-        /*
-        if (sz >= SECMEM_SIZE) { // - key, iv, mac... 
-                fclose(f);
-                die(0, "File too large");
-        }
-        */
-        //if (sec)
+
         *buf = malloc(sz + 1); //free this
         if (!*buf) clean_death(0, "buf xmalloc", 0, NULL, NULL, NULL, NULL, NULL, NULL);
 
@@ -123,7 +114,8 @@ read_file(char *is, unsigned char **buf) {
 }
 
 static void
-init_gcrypt(void) {
+init_gcrypt(void)
+{
 
         gcry_error_t     err;
 
@@ -131,12 +123,16 @@ init_gcrypt(void) {
                 fprintf(stderr, "libcrypt version mismatch\n");
                 exit(2);
         }
+        
         err = gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
         if (err) die(err, "Suspend secmem warning");
+
         err = gcry_control(GCRYCTL_INIT_SECMEM, SECMEM_SIZE, 0);
         if (err) die(err, "Init secmem"); // option to go on without secmem?
+        
         err = gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
         if (err) die(err, "Resume secmem warning");
+        
         err = gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
         if (err) die(err, "Init finished");
 
@@ -144,7 +140,8 @@ init_gcrypt(void) {
 }
 
 static gcry_error_t
-init_cipher(gcry_cipher_hd_t *hd, unsigned char *key, unsigned char *iv) {
+init_cipher(gcry_cipher_hd_t *hd, unsigned char *key, unsigned char *iv)
+{
         gcry_error_t err;
 
         err = gcry_cipher_open(
@@ -152,19 +149,20 @@ init_cipher(gcry_cipher_hd_t *hd, unsigned char *key, unsigned char *iv) {
                         CIPHER,   // int
                         GCRY_CIPHER_MODE_CBC,     // int
                         GCRY_CIPHER_CBC_CTS); // | GCRY_CIPHER_SECURE);            // unsigned int
-        if (err) return err; //clean_death(err, "gcry_cipher_open", 0, key, iv, buf);
+        if (err) return err;
 
         err = gcry_cipher_setkey(*hd, key, key_len);
-        if (err) return err; //clean_death(err, "cipher setkey", hd, key, iv, buf);
+        if (err) return err;
 
         err = gcry_cipher_setiv(*hd, iv, blk_len);
-        if (err) return err; //clean_death(err, "cipher setiv", hd, key, iv, buf);
+        if (err) return err;
 
         return 0;
 }
 
 static int 
-encrypt(char *is, char * os, char* pw) {
+encrypt(char *is, char * os, char* pw)
+{
         gcry_error_t     err;
         gcry_cipher_hd_t hd = 0;
         gcry_mac_hd_t mac = 0;
@@ -183,6 +181,7 @@ encrypt(char *is, char * os, char* pw) {
         fprintf(stderr, "Creating salt\n");
         salt = gcry_xmalloc_secure(KDF_SALT_SIZE);
         if (!salt) clean_death(0, "salt xmalloc", 0, key, iv, buf, hmac_key, salt, keys);
+
         gcry_create_nonce(salt, KDF_SALT_SIZE);
         keys = gcry_xmalloc_secure(key_len + hmac_len);
         if (!keys) clean_death(0, "keys xmalloc", 0, key, iv, buf, hmac_key, salt, keys);
@@ -193,20 +192,26 @@ encrypt(char *is, char * os, char* pw) {
 
         key = gcry_xmalloc_secure(key_len);
         if (!key) clean_death(0, "key xmalloc", 0, NULL, NULL, NULL, NULL, salt, keys);
+
         hmac_key = gcry_xmalloc_secure(hmac_key_len);
         if (!hmac_key) clean_death(0, "hmac xmalloc", 0, key, iv, buf, hmac_key, salt, keys);
+        
         if (!memcpy(key, keys, key_len)) clean_death(0, "memcpy key", 0, key, iv, buf, hmac_key, salt, keys);
+        
         if (!memcpy(hmac_key, keys + key_len, hmac_key_len))
                 clean_death(0, "memcpy hmac", 0, key, iv, buf, hmac_key, salt, keys);
+        
         gcry_free(keys);
         keys = NULL;
 
         iv = gcry_xmalloc_secure(blk_len);
         if (!iv) clean_death(0, "iv xmalloc", 0, key, iv, buf, hmac_key, salt, keys);
+        
         gcry_create_nonce(iv, blk_len);
 
         err = init_cipher(&hd, key, iv);
         if (err) clean_death(err, "init_cipher", hd, key, iv, buf, hmac_key, salt, keys);
+        
         fprintf(stderr, "cipher initiated\n");
 
         cbuf = calloc(blocks, blk_len);
@@ -217,7 +222,7 @@ encrypt(char *is, char * os, char* pw) {
         free(buf);
         buf = NULL;
 
-        fprintf(stderr, "encrypting %s\n", is);
+        fprintf(stderr, "encrypting %s\n%x\n", is, iv[0]);
         err = gcry_cipher_encrypt( hd, cbuf, blocks * blk_len, NULL, 0);
         if (err) clean_death(err, "cipher enc", hd, key, iv, buf, hmac_key, salt, keys);
         
@@ -225,6 +230,7 @@ encrypt(char *is, char * os, char* pw) {
         tot_len = KDF_SALT_SIZE + blk_len + blocks * blk_len + hmac_len;
         buf = malloc(tot_len);
         if (!buf) clean_death(err, "buffer malloc", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         memcpy(buf, salt, KDF_SALT_SIZE);
         memcpy(buf + KDF_SALT_SIZE, iv, blk_len);
         memcpy(buf + KDF_SALT_SIZE + blk_len, cbuf, blocks * blk_len);
@@ -238,32 +244,41 @@ encrypt(char *is, char * os, char* pw) {
         if (!cbuf) clean_death(err, "hmac xmalloc", 0, key, iv, buf, hmac_key, salt, keys); 
 
         fprintf(stderr, "Calculating HMAC\n");
+        
         err = gcry_mac_open(&mac, HMAC, GCRY_MAC_FLAG_SECURE, NULL);
         if (err) clean_death(err, "hmac open", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         err = gcry_mac_setkey(mac, hmac_key, hmac_key_len);
         if (err) clean_death(err, "hmac setkey", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         err = gcry_mac_write(mac, buf, tot_len - hmac_len);
         if (err) clean_death(err, "hmac write", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         err = gcry_mac_read(mac, cbuf, &hmac_len);
         if (err) clean_death(err, "hmac read", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         gcry_mac_close(mac);
+        
         memcpy(buf + KDF_SALT_SIZE + blk_len + blocks * blk_len, cbuf, hmac_len);
+        
         gcry_free(hmac_key);
         free(cbuf);
 
         len = write_file(os, buf, tot_len);
         free(buf);
         if (len ^ tot_len) die(0, "write fail");
+        
         return 0;
 }
 
 static int
-decrypt(char *is, char *os, char *pw) {
+decrypt(char *is, char *os, char *pw)
+{
         gcry_error_t     err;
         gcry_cipher_hd_t hd = 0;
-        gcry_mac_hd_t mac = 0;
-        unsigned char *key = NULL, *iv = NULL, *buf = NULL, *hmac = NULL, *salt = NULL;
-        unsigned char *keys = NULL, *cbuf = NULL, *hmac_key;
+        gcry_mac_hd_t    mac = 0;
+        unsigned char    *key = NULL, *iv = NULL, *buf = NULL, *hmac = NULL, *salt = NULL;
+        unsigned char    *keys = NULL, *cbuf = NULL, *hmac_key;
         size_t tot_len, len, flen;
 
         fprintf(stderr, "decryption wanted on: %s\nPassword: \"%s\"\n", is, pw);
@@ -274,10 +289,13 @@ decrypt(char *is, char *os, char *pw) {
 
         salt = gcry_xmalloc(KDF_SALT_SIZE);
         if (!salt) clean_death(0, "salt xmalloc", 0, key, iv, buf, NULL, salt, NULL);
+        
         iv = gcry_xmalloc_secure(blk_len);
         if (!iv) clean_death(0, "iv xmalloc", 0, key, iv, buf, NULL, salt, NULL);
+        
         cbuf = malloc(tot_len - KDF_SALT_SIZE - blk_len - hmac_len);
         if (!cbuf) clean_death(0, "hmac xmalloc", 0, key, iv, buf, NULL, salt, NULL); 
+        
         hmac = malloc(hmac_len);
         if (!hmac) clean_death(0, "hmac xmalloc", 0, key, iv, buf, NULL, salt, NULL); 
 
@@ -285,35 +303,51 @@ decrypt(char *is, char *os, char *pw) {
         memcpy(iv, buf + KDF_SALT_SIZE, blk_len);
         memcpy(cbuf, buf + KDF_SALT_SIZE + blk_len, tot_len - KDF_SALT_SIZE - blk_len - hmac_len);
         memcpy(hmac, buf + tot_len - hmac_len, hmac_len);
+        
         len = tot_len - KDF_SALT_SIZE - blk_len - hmac_len;
 
         keys = gcry_xmalloc_secure(key_len + hmac_len);
         if (!keys) clean_death(0, "keys xmalloc", 0, key, iv, buf, NULL, salt, keys);
+        
         err = gcry_kdf_derive(pw, strlen(pw), D_ALGO, D_SUBALGO, salt,
                         KDF_SALT_SIZE, KDF_ITER, key_len + hmac_len, keys);
         if (err) clean_death(err, "kdf derive", 0, key, iv, buf, NULL, salt, keys);
 
         key = gcry_xmalloc_secure(key_len);
         if (!key) clean_death(0, "key xmalloc", 0, NULL, iv, NULL, NULL, salt, keys);
+        
         hmac_key = gcry_xmalloc_secure(hmac_key_len);
         if (!hmac_key) clean_death(0, "hmac xmalloc", 0, key, iv, buf, hmac_key, salt, keys);
+        
         if (!memcpy(key, keys, key_len)) clean_death(0, "memcpy key", 0, key, iv, buf, hmac_key, salt, keys);
         if (!memcpy(hmac_key, keys + key_len, hmac_key_len))
                 clean_death(0, "memcpy hmac", 0, key, iv, buf, hmac_key, salt, keys);
+        
         gcry_free(keys);
         keys = NULL;
 
         fprintf(stderr, "Verifying HMAC\n");
+        
         err = gcry_mac_open(&mac, HMAC, GCRY_MAC_FLAG_SECURE, NULL);
         if (err) clean_death(err, "hmac open", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         err = gcry_mac_setkey(mac, hmac_key, hmac_key_len);
         if (err) clean_death(err, "hmac setkey", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         err = gcry_mac_write(mac, buf, tot_len - hmac_len);
         if (err) clean_death(err, "hmac write", 0, key, iv, buf, hmac_key, salt, keys); 
+        
         err = gcry_mac_verify(mac, hmac, hmac_len);
-        if (err) clean_death(err, "hmac verification failed", 0, key, iv, buf, hmac_key, salt, keys); 
+        if (err) {
+                fprintf(stderr, "\nWARNING!\nVerification FAILED.\n\nContinue with decryption [y/N]: ");
+                char c = getchar();
+                while ((getchar()) != '\n');
+                if (c != 'y' || c != 'Y') clean_death(err, "hmac verification failed", 0, key, iv, buf, hmac_key, salt, keys); 
+        }
         else fprintf(stderr, "HMAC VALID\n");
+        
         gcry_mac_close(mac);
+        
         fprintf(stderr, "decrypting %s\n", is);
 
         err = init_cipher(&hd, key, iv);
@@ -321,6 +355,7 @@ decrypt(char *is, char *os, char *pw) {
 
         err = gcry_cipher_decrypt( hd, cbuf, len, NULL, 0);
         if (err) clean_death(err, "cipher dec", hd, key, iv, buf, hmac, NULL, NULL);
+        
         free(buf);
         memcpy(&flen, cbuf, sizeof(size_t));
         fprintf(stderr, "file size: %d\n", (int)flen);
@@ -342,7 +377,8 @@ decrypt(char *is, char *os, char *pw) {
 }
 
 int
-main(int argc, char** argv) {
+main(int argc, char** argv)
+{
         if (argc < 2) help();//die(0, "bastard");
         int enc = -1, opt = 0;
         char *infile = NULL;
@@ -415,6 +451,7 @@ main(int argc, char** argv) {
                 encrypt(infile, outfile, pass);
         else
                 decrypt(infile, outfile, pass);
+
         fprintf(stderr, "%s is done\n", argv[0]);
         if (pw) free(pw);
 }

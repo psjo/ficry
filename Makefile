@@ -4,6 +4,7 @@ CFLAGS = -std=c99 -pedantic -Wall #'libgcrypt-config --cflags'
 LDFLAGS = -s ${LIBS}
 SRC = aes-crypt.c
 OBJ = ${SRC:.c=.o}
+HEADER = ${SRC:.c=.h}
 
 all: options ficry
 
@@ -18,7 +19,7 @@ options:
 	@echo "CC $<"
 	@${CC} -c ${CFLAGS} $<
 
-ficry: ${OBJ}
+ficry: ${OBJ} ${HEADER}
 	@echo "CC -o $@"
 	@${CC} -o $@ ${OBJ} ${LDFLAGS}
 
